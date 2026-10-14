@@ -59,14 +59,22 @@ export class AudioPlayerManager {
           break;
         case 'initialized':
           if (this.avPlayer) {
-            this.avPlayer.prepare();
+            try {
+              await this.avPlayer.prepare();
+            } catch (err) {
+              hilog.error(DOMAIN, TAG, `prepare error: ${JSON.stringify(err)}`);
+            }
           }
           break;
         case 'prepared':
           this.isPrepared = true;
           // 准备好后直接开播
           if (this.avPlayer) {
-            this.avPlayer.play();
+            try {
+              await this.avPlayer.play();
+            } catch (err) {
+              hilog.error(DOMAIN, TAG, `play error: ${JSON.stringify(err)}`);
+            }
           }
           break;
         case 'playing':
@@ -80,7 +88,6 @@ export class AudioPlayerManager {
           break;
         case 'released':
           this.isPrepared = false;
-          this.avPlayer = null;
           break;
         case 'error':
           this.isPrepared = false;
@@ -88,40 +95,42 @@ export class AudioPlayerManager {
       }
     });
 
-    this.avPlayer.on('timeUpdate', (time: number) => {
+    this.avPlayer.on('timeUpdate', (timeMs: number) => {
       if (this.onTimeUpdateCallback && this.avPlayer) {
-        this.onTimeUpdateCallback(time, this.avPlayer.duration);
+        this.onTimeUpdateCallback(timeMs, this.avPlayer.duration);
       }
     });
 
     this.avPlayer.on('error', (err) => {
-      hilog.error(DOMAIN, TAG, `AVPlayer error: ${JSON.stringify(err)}`);
+      hilog.error(DOMAIN, TAG, `AVPlayer error event: code=${err.code}, msg=${err.message}`);
+      if (this.avPlayer) {
+        try {
+          this.avPlayer.reset();
+        } catch (_) {}
+      }
     });
   }
 
   /**
-   * 播放指定音频链接（支持调速：1.0x 正常 / 0.8x 慢速磨耳）
+   * 播放指定音频链接
    */
-  public async playUrl(url: string, speed: number = 1.0): Promise<void> {
-    if (!this.avPlayer) {
-      await this.init();
-    }
+  public async playUrl(url: string): Promise<void> {
+    await this.init();
     if (!this.avPlayer) return;
 
     try {
       if (this.currentUrl === url && this.isPrepared) {
-        // 同一首，重头开始播放
-        await this.avPlayer.seek(0);
-        await this.avPlayer.setSpeed(speed === 0.8 ? media.PlaybackSpeed.SPEED_FORWARD_0_75_X : media.PlaybackSpeed.SPEED_FORWARD_1_00_X);
-        await this.avPlayer.play();
-      } else {
-        // 重置并加载新音频
-        await this.avPlayer.reset();
-        this.currentUrl = url;
-        this.avPlayer.url = url;
+        if (this.avPlayer.state === 'paused' || this.avPlayer.state === 'completed') {
+          await this.avPlayer.play();
+          return;
+        }
       }
+
+      this.currentUrl = url;
+      await this.avPlayer.reset();
+      this.avPlayer.url = url;
     } catch (e) {
-      hilog.error(DOMAIN, TAG, `playUrl failed: ${JSON.stringify(e)}`);
+      hilog.error(DOMAIN, TAG, `Failed to playUrl: ${JSON.stringify(e)}`);
     }
   }
 
@@ -130,7 +139,11 @@ export class AudioPlayerManager {
    */
   public async pause(): Promise<void> {
     if (this.avPlayer && this.avPlayer.state === 'playing') {
-      await this.avPlayer.pause();
+      try {
+        await this.avPlayer.pause();
+      } catch (err) {
+        hilog.error(DOMAIN, TAG, `pause error: ${JSON.stringify(err)}`);
+      }
     }
   }
 
@@ -139,7 +152,11 @@ export class AudioPlayerManager {
    */
   public async stop(): Promise<void> {
     if (this.avPlayer) {
-      await this.avPlayer.stop();
+      try {
+        await this.avPlayer.stop();
+      } catch (err) {
+        hilog.error(DOMAIN, TAG, `stop error: ${JSON.stringify(err)}`);
+      }
     }
   }
 
@@ -148,8 +165,12 @@ export class AudioPlayerManager {
    */
   public async setSpeed(speed: number): Promise<void> {
     if (this.avPlayer && this.isPrepared) {
-      const targetSpeed = speed <= 0.8 ? media.PlaybackSpeed.SPEED_FORWARD_0_75_X : media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
-      await this.avPlayer.setSpeed(targetSpeed);
+      try {
+        const targetSpeed = speed <= 0.8 ? media.PlaybackSpeed.SPEED_FORWARD_0_75_X : media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+        await this.avPlayer.setSpeed(targetSpeed);
+      } catch (err) {
+        hilog.error(DOMAIN, TAG, `setSpeed error: ${JSON.stringify(err)}`);
+      }
     }
   }
 
@@ -172,7 +193,11 @@ export class AudioPlayerManager {
    */
   public async release(): Promise<void> {
     if (this.avPlayer) {
-      await this.avPlayer.release();
+      try {
+        await this.avPlayer.release();
+      } catch (err) {
+        hilog.error(DOMAIN, TAG, `release error: ${JSON.stringify(err)}`);
+      }
       this.avPlayer = null;
       this.isPrepared = false;
     }

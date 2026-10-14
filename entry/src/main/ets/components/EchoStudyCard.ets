@@ -94,13 +94,15 @@ export struct EchoStudyCard {
           Circle()
             .width(this.isPlaying ? 140 : 110)
             .height(this.isPlaying ? 140 : 110)
-            .fill('#1E293B')
+            .backgroundColor('#1E293B')
+            .borderRadius(70)
             .animation({ duration: 500, iterations: -1, curve: Curve.EaseInOut })
 
           Circle()
             .width(90)
             .height(90)
-            .fill('#6366F1')
+            .backgroundColor('#6366F1')
+            .borderRadius(45)
 
           Text(this.isPlaying ? '■' : '▶')
             .fontSize(28)
@@ -134,7 +136,7 @@ export struct EchoStudyCard {
 
         Button('揭晓字幕与解析  ➔')
           .fontSize(14)
-          .fontWeight(FontWeight.SemiBold)
+          .fontWeight(FontWeight.Medium)
           .fontColor(Color.White)
           .backgroundColor('#6366F1')
           .height(38)

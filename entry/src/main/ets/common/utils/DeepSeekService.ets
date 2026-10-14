@@ -5,54 +5,84 @@ import hilog from '@ohos.hilog';
 const TAG = 'DeepSeekService';
 const DOMAIN = 0x0003;
 
-interface DeepSeekMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+export class DeepSeekMessage {
+  role: string = '';
+  content: string = '';
+
+  constructor(role: string, content: string) {
+    this.role = role;
+    this.content = content;
+  }
 }
 
-interface DeepSeekRequestBody {
-  model: string;
-  messages: DeepSeekMessage[];
-  temperature: number;
-  response_format?: { type: string };
+export class DeepSeekResponseFormat {
+  type: string = 'json_object';
+
+  constructor(type: string = 'json_object') {
+    this.type = type;
+  }
 }
 
-interface DeepSeekChoice {
-  message: {
-    content: string;
-  };
+export class DeepSeekRequestBody {
+  model: string = 'deepseek-chat';
+  messages: DeepSeekMessage[] = [];
+  temperature: number = 0.7;
+  response_format: DeepSeekResponseFormat = new DeepSeekResponseFormat();
+
+  constructor(model: string, messages: DeepSeekMessage[], temperature: number, response_format: DeepSeekResponseFormat) {
+    this.model = model;
+    this.messages = messages;
+    this.temperature = temperature;
+    this.response_format = response_format;
+  }
 }
 
-interface DeepSeekResponse {
-  choices: DeepSeekChoice[];
-  error?: {
-    message: string;
-    type: string;
-    code: string;
-  };
+export class DeepSeekChoiceMessage {
+  content: string = '';
 }
 
-interface RawCardResponse {
-  cards: Array<{
-    sceneDescription: string;
-    englishSentence: string;
-    chineseTranslation: string;
-    difficultyLevel: 1 | 2 | 3;
-    keywords: Array<{
-      word: string;
-      phonetic: string;
-      meaning: string;
-      rootMeaning?: string;
-      usageNote?: string;
-    }>;
-    phoneticBreakdown: Array<{
-      type: 'linking' | 'weakening' | 'assimilation' | 'elision' | 'stress';
-      typeLabel: string;
-      chunk: string;
-      pronunciation: string;
-      explanation: string;
-    }>;
-  }>;
+export class DeepSeekChoice {
+  message: DeepSeekChoiceMessage = new DeepSeekChoiceMessage();
+}
+
+export class DeepSeekErrorDetail {
+  message: string = '';
+  type: string = '';
+  code: string = '';
+}
+
+export class DeepSeekResponse {
+  choices: DeepSeekChoice[] = [];
+  error: DeepSeekErrorDetail | null = null;
+}
+
+export class RawKeywordItem {
+  word: string = '';
+  phonetic: string = '';
+  meaning: string = '';
+  rootMeaning: string = '';
+  usageNote: string = '';
+}
+
+export class RawPhoneticRuleItem {
+  type: string = '';
+  typeLabel: string = '';
+  chunk: string = '';
+  pronunciation: string = '';
+  explanation: string = '';
+}
+
+export class RawCardItem {
+  sceneDescription: string = '';
+  englishSentence: string = '';
+  chineseTranslation: string = '';
+  difficultyLevel: number = 1;
+  keywords: RawKeywordItem[] = [];
+  phoneticBreakdown: RawPhoneticRuleItem[] = [];
+}
+
+export class RawCardResponse {
+  cards: RawCardItem[] = [];
 }
 
 /**
@@ -90,7 +120,7 @@ export class DeepSeekService {
       "sceneDescription": "电影中该对白发生的生动场景描述（10~25字）",
       "englishSentence": "英文原句（3~10个单词，口语化强）",
       "chineseTranslation": "中文地道翻译",
-      "difficultyLevel": 1, // 1简单，2进阶，3快速
+      "difficultyLevel": 1,
       "keywords": [
         {
           "word": "重点词或短语",
@@ -102,7 +132,7 @@ export class DeepSeekService {
       ],
       "phoneticBreakdown": [
         {
-          "type": "linking", // 可选: linking(连读), weakening(弱读), assimilation(同化), elision(失爆)
+          "type": "linking",
           "typeLabel": "连读",
           "chunk": "两个相邻单词",
           "pronunciation": "/连读后的实际发音/",
@@ -118,15 +148,16 @@ export class DeepSeekService {
 
     const userPrompt = `请为电影/美剧《${movieTitle}》生成 ${count} 张极简原声磨耳学习卡片。`;
 
-    const requestBody: DeepSeekRequestBody = {
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' }
-    };
+    const messages: DeepSeekMessage[] = [
+      new DeepSeekMessage('system', systemPrompt),
+      new DeepSeekMessage('user', userPrompt)
+    ];
+    const requestBody = new DeepSeekRequestBody(
+      'deepseek-chat',
+      messages,
+      0.7,
+      new DeepSeekResponseFormat('json_object')
+    );
 
     const httpRequest = http.createHttp();
 
@@ -176,31 +207,65 @@ export class DeepSeekService {
       }
 
       // 将 raw 转换为标准 EchoCard 结构，并挂接发音音频
-      const timestamp = Date.now();
-      const generatedCards: EchoCard[] = parsed.cards.map((item, index) => {
-        // 构建有道高保真发音切片地址
+      const timestamp = new Date().getTime();
+      const generatedCards: EchoCard[] = [];
+
+      for (let i = 0; i < parsed.cards.length; i++) {
+        const item = parsed.cards[i];
         const encodedSentence = encodeURIComponent(item.englishSentence);
         const audioUrl = `https://dict.youdao.com/dictvoice?audio=${encodedSentence}&type=2`;
 
-        return {
-          id: `ai_${timestamp}_${index + 1}`,
-          category: 'movie',
-          sourceTitle: `《${movieTitle}》`,
-          sceneDescription: item.sceneDescription || '电影原声对白',
-          audioUrl: audioUrl,
-          audioDurationSec: Math.max(2.5, item.englishSentence.split(' ').length * 0.4),
-          englishSentence: item.englishSentence,
-          chineseTranslation: item.chineseTranslation,
-          difficultyLevel: item.difficultyLevel || 2,
-          keywords: item.keywords || [],
-          phoneticBreakdown: item.phoneticBreakdown || []
-        };
-      });
+        const kwList: HighlightWord[] = [];
+        if (item.keywords && item.keywords.length > 0) {
+          for (let k = 0; k < item.keywords.length; k++) {
+            const kw = item.keywords[k];
+            kwList.push(new HighlightWord(
+              kw.word,
+              kw.phonetic,
+              kw.meaning,
+              kw.rootMeaning || '',
+              kw.usageNote || ''
+            ));
+          }
+        }
+
+        const pbList: PhoneticRule[] = [];
+        if (item.phoneticBreakdown && item.phoneticBreakdown.length > 0) {
+          for (let p = 0; p < item.phoneticBreakdown.length; p++) {
+            const pb = item.phoneticBreakdown[p];
+            pbList.push(new PhoneticRule(
+              pb.type || 'linking',
+              pb.typeLabel || '连读',
+              pb.chunk || '',
+              pb.pronunciation || '',
+              pb.explanation || ''
+            ));
+          }
+        }
+
+        const card = new EchoCard(
+          `ai_${timestamp}_${i + 1}`,
+          'movie',
+          `《${movieTitle}》`,
+          item.sceneDescription || '电影原声对白',
+          audioUrl,
+          Math.max(2.5, item.englishSentence.split(' ').length * 0.4),
+          item.englishSentence,
+          item.chineseTranslation,
+          item.difficultyLevel || 2,
+          kwList,
+          pbList
+        );
+        generatedCards.push(card);
+      }
 
       return generatedCards;
     } catch (err) {
       hilog.error(DOMAIN, TAG, `DeepSeek request error: ${JSON.stringify(err)}`);
-      throw err;
+      if (err instanceof Error) {
+        throw err;
+      }
+      throw new Error(`生成失败: ${JSON.stringify(err)}`);
     } finally {
       httpRequest.destroy();
     }

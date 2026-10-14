@@ -1,5 +1,5 @@
 import preferences from '@ohos.data.preferences';
-import { DailyStudyRecord, EchoCard } from '../model/EchoCardModel';
+import { DailyStudyRecord, EchoCard } from '../../model/EchoCardModel';
 import hilog from '@ohos.hilog';
 
 const PREF_NAME = 'daily_echo_storage';
@@ -10,6 +10,19 @@ const KEY_ACTIVE_MOVIE = 'active_movie_title';
 
 const TAG = 'StorageManager';
 const DOMAIN = 0x0002;
+
+/**
+ * 自定义卡片返回结构体
+ */
+export class CustomCardsResult {
+  cards: EchoCard[] = [];
+  movieTitle: string = '';
+
+  constructor(cards: EchoCard[], movieTitle: string) {
+    this.cards = cards;
+    this.movieTitle = movieTitle;
+  }
+}
 
 /**
  * 用户本地打卡与学习进度持久化管理器
@@ -82,15 +95,17 @@ export class StorageManager {
   /**
    * 读取自定义卡片列表
    */
-  public async getCustomCards(): Promise<{ cards: EchoCard[]; movieTitle: string }> {
-    if (!this.pref) return { cards: [], movieTitle: '' };
+  public async getCustomCards(): Promise<CustomCardsResult> {
+    if (!this.pref) {
+      return new CustomCardsResult([], '');
+    }
     try {
       const rawCards = await this.pref.get(KEY_CUSTOM_CARDS, '[]');
       const movieTitle = await this.pref.get(KEY_ACTIVE_MOVIE, '');
       const cards: EchoCard[] = JSON.parse(rawCards as string);
-      return { cards, movieTitle: movieTitle as string };
+      return new CustomCardsResult(cards, movieTitle as string);
     } catch (e) {
-      return { cards: [], movieTitle: '' };
+      return new CustomCardsResult([], '');
     }
   }
 
@@ -124,13 +139,7 @@ export class StorageManager {
    */
   public async getDailyRecord(): Promise<DailyStudyRecord> {
     const today = this.getTodayString();
-    const defaultRecord: DailyStudyRecord = {
-      date: today,
-      completedCardIds: [],
-      streakDays: 1,
-      isTargetCompleted: false,
-      totalCardsMastered: 0
-    };
+    const defaultRecord = new DailyStudyRecord(today, [], 1, false, 0);
 
     if (!this.pref) return defaultRecord;
 
@@ -140,16 +149,20 @@ export class StorageManager {
 
       // 如果跨天了，刷新打卡状态
       if (record.date !== today) {
-        const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().split('T')[0];
+        const yesterdayDate = new Date(Date.now() - 24 * 3600 * 1000);
+        const yYear = yesterdayDate.getFullYear();
+        const yMonth = (yesterdayDate.getMonth() + 1).toString().padStart(2, '0');
+        const yDay = yesterdayDate.getDate().toString().padStart(2, '0');
+        const yesterday = `${yYear}-${yMonth}-${yDay}`;
         const newStreak = record.date === yesterday && record.isTargetCompleted ? record.streakDays + 1 : 1;
 
-        const newDayRecord: DailyStudyRecord = {
-          date: today,
-          completedCardIds: [],
-          streakDays: newStreak,
-          isTargetCompleted: false,
-          totalCardsMastered: record.totalCardsMastered
-        };
+        const newDayRecord = new DailyStudyRecord(
+          today,
+          [],
+          newStreak,
+          false,
+          record.totalCardsMastered
+        );
         await this.saveDailyRecord(newDayRecord);
         return newDayRecord;
       }

@@ -15,13 +15,7 @@ struct Index {
   @State cards: EchoCard[] = SEED_ECHO_CARDS;
   @State currentMovieTitle: string = '精选原声与日常';
   @State currentIndex: number = 0;
-  @State studyRecord: DailyStudyRecord = {
-    date: '',
-    completedCardIds: [],
-    streakDays: 1,
-    isTargetCompleted: false,
-    totalCardsMastered: 0
-  };
+  @State studyRecord: DailyStudyRecord = new DailyStudyRecord('', [], 1, false, 0);
   @State isBingeMode: boolean = false; // 是否开启“无压加餐”模式
 
   private storageManager = StorageManager.getInstance();
@@ -197,7 +191,7 @@ struct Index {
 
         Button('自由加餐 ➔')
           .fontSize(14)
-          .fontWeight(FontWeight.SemiBold)
+          .fontWeight(FontWeight.Medium)
           .fontColor(Color.White)
           .backgroundColor('#6366F1')
           .height(44)
