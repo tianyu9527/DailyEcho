@@ -1,14 +1,19 @@
 import preferences from '@ohos.data.preferences';
-import { DailyStudyRecord } from '../model/EchoCardModel';
+import { DailyStudyRecord, EchoCard } from '../model/EchoCardModel';
 import hilog from '@ohos.hilog';
 
 const PREF_NAME = 'daily_echo_storage';
 const KEY_RECORD = 'study_record';
+const KEY_DEEPSEEK_KEY = 'deepseek_api_key';
+const KEY_CUSTOM_CARDS = 'custom_movie_cards';
+const KEY_ACTIVE_MOVIE = 'active_movie_title';
+
 const TAG = 'StorageManager';
 const DOMAIN = 0x0002;
 
 /**
  * 用户本地打卡与学习进度持久化管理器
+ * 支持：学习进度、DeepSeek API Key、自定义电影卡片库
  */
 export class StorageManager {
   private static instance: StorageManager | null = null;
@@ -31,6 +36,75 @@ export class StorageManager {
       this.pref = await preferences.getPreferences(context, PREF_NAME);
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Failed to get preferences: ${JSON.stringify(e)}`);
+    }
+  }
+
+  /**
+   * 保存 DeepSeek API Key
+   */
+  public async setDeepSeekApiKey(key: string): Promise<void> {
+    if (!this.pref) return;
+    try {
+      await this.pref.put(KEY_DEEPSEEK_KEY, key.trim());
+      await this.pref.flush();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Failed to save DeepSeek key: ${JSON.stringify(e)}`);
+    }
+  }
+
+  /**
+   * 获取保存的 DeepSeek API Key
+   */
+  public async getDeepSeekApiKey(): Promise<string> {
+    if (!this.pref) return '';
+    try {
+      const key = await this.pref.get(KEY_DEEPSEEK_KEY, '');
+      return key as string;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /**
+   * 保存用户通过 AI 生成的自定义卡片列表
+   */
+  public async saveCustomCards(cards: EchoCard[], movieTitle: string): Promise<void> {
+    if (!this.pref) return;
+    try {
+      await this.pref.put(KEY_CUSTOM_CARDS, JSON.stringify(cards));
+      await this.pref.put(KEY_ACTIVE_MOVIE, movieTitle);
+      await this.pref.flush();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Failed to save custom cards: ${JSON.stringify(e)}`);
+    }
+  }
+
+  /**
+   * 读取自定义卡片列表
+   */
+  public async getCustomCards(): Promise<{ cards: EchoCard[]; movieTitle: string }> {
+    if (!this.pref) return { cards: [], movieTitle: '' };
+    try {
+      const rawCards = await this.pref.get(KEY_CUSTOM_CARDS, '[]');
+      const movieTitle = await this.pref.get(KEY_ACTIVE_MOVIE, '');
+      const cards: EchoCard[] = JSON.parse(rawCards as string);
+      return { cards, movieTitle: movieTitle as string };
+    } catch (e) {
+      return { cards: [], movieTitle: '' };
+    }
+  }
+
+  /**
+   * 清除自定义电影库，恢复默认内置精选库
+   */
+  public async clearCustomCards(): Promise<void> {
+    if (!this.pref) return;
+    try {
+      await this.pref.delete(KEY_CUSTOM_CARDS);
+      await this.pref.delete(KEY_ACTIVE_MOVIE);
+      await this.pref.flush();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Failed to clear custom cards: ${JSON.stringify(e)}`);
     }
   }
 
@@ -66,7 +140,6 @@ export class StorageManager {
 
       // 如果跨天了，刷新打卡状态
       if (record.date !== today) {
-        // 判断前一天是否完成，若完成则 streak+1，否则归 1
         const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().split('T')[0];
         const newStreak = record.date === yesterday && record.isTargetCompleted ? record.streakDays + 1 : 1;
 
@@ -96,7 +169,6 @@ export class StorageManager {
       record.completedCardIds.push(cardId);
       record.totalCardsMastered += 1;
     }
-    // 达到 2 张卡片即完成今日目标
     if (record.completedCardIds.length >= 2) {
       record.isTargetCompleted = true;
     }
