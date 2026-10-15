@@ -12,6 +12,7 @@ export class AudioPlayerManager {
   private static instance: AudioPlayerManager | null = null;
   private avPlayer: media.AVPlayer | null = null;
   private currentUrl: string = '';
+  private currentSpeed: number = 1.0;
   private isPrepared: boolean = false;
   private onStateChangeCallback: ((state: string) => void) | null = null;
   private onTimeUpdateCallback: ((currentMs: number, totalMs: number) => void) | null = null;
@@ -71,6 +72,10 @@ export class AudioPlayerManager {
           // 准备好后直接开播
           if (this.avPlayer) {
             try {
+              if (this.currentSpeed !== 1.0) {
+                const targetSpeed = this.currentSpeed <= 0.8 ? media.PlaybackSpeed.SPEED_FORWARD_0_75_X : media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+                await this.avPlayer.setSpeed(targetSpeed);
+              }
               await this.avPlayer.play();
             } catch (err) {
               hilog.error(DOMAIN, TAG, `play error: ${JSON.stringify(err)}`);
@@ -112,15 +117,18 @@ export class AudioPlayerManager {
   }
 
   /**
-   * 播放指定音频链接
+   * 播放指定音频链接（支持可选倍速）
    */
-  public async playUrl(url: string): Promise<void> {
+  public async playUrl(url: string, speed: number = 1.0): Promise<void> {
     await this.init();
     if (!this.avPlayer) return;
+
+    this.currentSpeed = speed;
 
     try {
       if (this.currentUrl === url && this.isPrepared) {
         if (this.avPlayer.state === 'paused' || this.avPlayer.state === 'completed') {
+          await this.setSpeed(speed);
           await this.avPlayer.play();
           return;
         }
